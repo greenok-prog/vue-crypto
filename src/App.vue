@@ -138,7 +138,7 @@
               {{ t.name }} - USD
             </dt>
             <dd class="mt-1 text-3xl font-semibold text-gray-900">
-              {{ t.price }}
+              {{ formatPrice(t.price) }}
             </dd>
           </div>
           <div class="w-full border-t border-gray-200"></div>
@@ -208,6 +208,8 @@
 </template>
 
 <script>
+import { subscribeToTicker, unsubscribeFromTicker } from "./api";
+
 export default {
   name: "App",
   data() {
@@ -234,50 +236,50 @@ export default {
     );
     const data = await f.json();
     this.coinList = data.Data;
-
+    const VALID_KEYS = ["filter", "page"];
     const windowData = Object.fromEntries(
       new URL(window.location).searchParams.entries()
     );
     if (windowData.filter) {
       this.filter = windowData.filter;
     }
-    if (windowData.page) {
-      this.page = windowData.page;
-    }
 
-    const tickersData = localStorage.getItem("cryptonomicon-list");
-    if (tickersData) {
-      this.tickers = JSON.parse(tickersData);
-    }
-    this.tickers.forEach((ticker) => {
-      this.subscribeToUpdates(ticker.name);
+    VALID_KEYS.forEach((key) => {
+      if (windowData[key]) {
+        this[key] = windowData[key];
+      }
     });
 
+    const tickersData = localStorage.getItem("cryptonomicon-list");
+
+    if (tickersData) {
+      this.tickers = JSON.parse(tickersData);
+      this.tickers.forEach((ticker) => {
+        subscribeToTicker(ticker.name, (newPrice) =>
+          this.updateTicker(ticker.name, newPrice)
+        );
+      });
+    }
+
+    setInterval(this.updateTickers, 5000);
     this.load = false;
   },
   methods: {
-    helper() {
-      const similarCoins = Object.keys(this.coinList).filter((coin) =>
-        coin.includes(this.ticker.toUpperCase())
-      );
-      const similarCoinsList = similarCoins.slice(0, 4);
-
-      return similarCoinsList;
+    formatPrice(price) {
+      if (price === "-") {
+        return price;
+      }
+      return price > 1 ? price.toFixed(2) : price.toPrecision(2);
     },
-
-    subscribeToUpdates(tickerName) {
-      setInterval(async () => {
-        const f = await fetch(
-          `https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD&api_key='e080d93c64c06c1c734cc1fd41bf3f60b00b7d4d929834f9f0e1732cfe0a92f6'}`
-        );
-        const data = await f.json();
-        this.tickers.find((t) => t.name === tickerName).price =
-          data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
-
-        if (this.selectedTicker?.name === tickerName) {
-          this.graph.push(data.USD);
-        }
-      }, 5000);
+    updateTicker(tickerName, price) {
+      this.tickers
+        .filter((t) => t.name === tickerName)
+        .forEach((t) => {
+          if (t === this.selectedTicker) {
+            this.graph.push(price);
+          }
+          t.price = price;
+        });
     },
 
     add(ticker = this.ticker) {
@@ -288,12 +290,15 @@ export default {
         this.ticker = "";
         return;
       }
-      this.tickers = [...this.ticker, currentTicker];
-      this.subscribeToUpdates(currentTicker.name);
-
-      this.er = false;
+      this.tickers = [...this.tickers, currentTicker];
+      localStorage.setItem("cryptonomicon-list", JSON.stringify(this.tickers));
       this.ticker = "";
       this.filter = "";
+      subscribeToTicker(currentTicker.name, (newPrice) =>
+        this.updateTicker(currentTicker.name, newPrice)
+      );
+
+      this.er = false;
     },
 
     handlerDelete(tickerToRemove) {
@@ -302,10 +307,19 @@ export default {
       if (this.selectedTicker == tickerToRemove) {
         this.selectedTicker = null;
       }
+      unsubscribeFromTicker(tickerToRemove.name);
     },
 
     select(ticker) {
       this.selectedTicker = ticker;
+    },
+    helper() {
+      const similarCoins = Object.keys(this.coinList).filter((coin) =>
+        coin.includes(this.ticker.toUpperCase())
+      );
+      const similarCoinsList = similarCoins.slice(0, 4);
+
+      return similarCoinsList;
     }
   },
   computed: {
@@ -328,8 +342,9 @@ export default {
       return this.page * 6;
     },
     filteredTickers() {
-      return this.tickers.filter((t) =>
-        t.name.includes(this.filter.toUpperCase())
+      return (
+        this.tickers &&
+        this.tickers.filter((t) => t.name.includes(this.filter.toUpperCase()))
       );
     },
     paginetedTickers() {
