@@ -1,4 +1,4 @@
-const API_KEY = 'e080d93c64c06c1c734cc1fd41bf3f60b00b7d4d929834f9f0e1732cfe0a92f6'
+const API_KEY = '71920a645240de9c957b50120f5fda78cda7afb9e66bb6a0591485e553c2c9b8'
 
 const tickersHandlers = new Map();
 const socket = new WebSocket(`wss://streamer.cryptocompare.com/v2?api_key=${API_KEY}`)
