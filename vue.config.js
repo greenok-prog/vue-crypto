@@ -1,3 +1,3 @@
 module.exports={
-    publicPath:"/vue-crypto-build-/"
+    publicPath:"/vue-crypto/"
 }
